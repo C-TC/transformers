@@ -158,6 +158,9 @@ class BaseModelOutputWithPast(ModelOutput):
     hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
     attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
 
+@dataclass
+class ModifiedModelOutputWithPast(BaseModelOutputWithPast):
+    query_states: Optional[Tuple[torch.FloatTensor]] = None
 
 @dataclass
 class BaseModelOutputWithCrossAttentions(ModelOutput):
@@ -709,6 +712,9 @@ class CausalLMOutputWithPast(ModelOutput):
     hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
     attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
 
+@dataclass
+class ModifiedCausalLMOutputWithPast(CausalLMOutputWithPast):
+    query_states: Optional[Tuple[torch.FloatTensor]] = None
 
 @dataclass
 class CausalLMOutputWithCrossAttentions(ModelOutput):
