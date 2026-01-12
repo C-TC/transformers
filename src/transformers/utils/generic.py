@@ -942,6 +942,7 @@ class OutputRecorder:
     index: int = 0
     layer_name: Optional[str] = None
     class_name: Optional[str] = None
+    layer_index: list[int] | None = None
 
 
 def check_model_inputs(func):
@@ -1009,7 +1010,17 @@ def check_model_inputs(func):
                     UserWarning,
                 )
 
-        def make_capture_wrapper(module, orig_forward, key, index):
+        def make_capture_wrapper(module, orig_forward, key, spec):
+            index = spec.index
+            layer_index = spec.layer_index
+
+            def optionally_append(outputs, new_output):
+                if layer_index is None:
+                    outputs += (new_output,)
+                else:
+                    outputs += (new_output,) if len(outputs) in layer_index else (None,)
+                return outputs
+
             @wraps(orig_forward)
             def wrapped_forward(*args, **kwargs):
                 if key == "hidden_states" and len(collected_outputs[key]) == 0:
@@ -1022,12 +1033,12 @@ def check_model_inputs(func):
                 else:
                     output = orig_forward(*args, **kwargs)
                 if not isinstance(output, tuple):
-                    collected_outputs[key] += (output,)
+                    collected_outputs[key] = optionally_append(collected_outputs[key], output)
                 elif output[index] is not None:
                     if key not in collected_outputs:
                         collected_outputs[key] = (output[index],)
                     else:
-                        collected_outputs[key] += (output[index],)
+                        collected_outputs[key] = optionally_append(collected_outputs[key], output[index])
                 return output
 
             return wrapped_forward
@@ -1044,7 +1055,16 @@ def check_model_inputs(func):
                         index = 0 if "hidden_states" in key else 1
                         class_name = None if not isinstance(specs, str) else specs
                         target_class = specs if not isinstance(specs, str) else None
-                        specs = OutputRecorder(target_class=target_class, index=index, class_name=class_name)
+                        layer_index = (
+                            None
+                            if recordable_keys.get(f"output_{key}") in (True, False)
+                            else recordable_keys.get(f"output_{key}")
+                        )
+                        if isinstance(layer_index, int):
+                            layer_index = [layer_index]
+                        specs = OutputRecorder(
+                            target_class=target_class, index=index, class_name=class_name, layer_index=layer_index
+                        )
                     capture_tasks.append((key, specs))
 
             for name, module in self.named_modules():
@@ -1057,7 +1077,7 @@ def check_model_inputs(func):
                             continue
                         # Monkey patch forward
                         original_forward = module.forward
-                        module.forward = make_capture_wrapper(module, original_forward, key, specs.index)
+                        module.forward = make_capture_wrapper(module, original_forward, key, specs)
                         monkey_patched_layers.append((module, original_forward))
 
         try:
